@@ -1,203 +1,567 @@
-// Mobil kontrolü
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+let scene, camera, renderer, particles, composer, controls;
+let time = 0;
+let isAnimationEnabled = true;
+let currentTheme = 'molten';
+let morphTarget = 1;
+let morphProgress = 1;
+
+// MOBİL KONTROLÜ
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-// Mobil için optimize edilmiş ayarlar
-if (isMobile) {
-    window.isDevice = true;
-    var koef = 0.5;
-    console.log("Mobil cihaz tespit edildi, optimizasyon uygulanıyor...");
-} else {
-    window.isDevice = false;
-    var koef = 1;
-}
+// MOBİL İÇİN OPTİMİZE AYARLAR
+const particleCount = isMobile ? 3000 : 10000; // Mobilde partikül sayısını azalt
+const isLowEndDevice = isMobile && /Android.*(4\.[0-3]|5\.0|5\.1|iPhone.*OS_[0-9]|iPad.*OS_[0-9])/i.test(navigator.userAgent);
 
-window.requestAnimationFrame =
-    window.__requestAnimationFrame ||
-        window.requestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.oRequestAnimationFrame ||
-        window.msRequestAnimationFrame ||
-        (function () {
-            return function (callback, element) {
-                var lastTime = element.__lastTime;
-                if (lastTime === undefined) {
-                    lastTime = 0;
-                }
-                var currTime = Date.now();
-                var timeToCall = Math.max(1, 33 - (currTime - lastTime));
-                window.setTimeout(callback, timeToCall);
-                element.__lastTime = currTime + timeToCall;
-            };
-        })();
-
-var loaded = false;
-var init = function () {
-    if (loaded) return;
-    loaded = true;
-    
-    var mobile = window.isDevice;
-    var koef = mobile ? 0.5 : 1;
-    var canvas = document.getElementById('heart');
-    var ctx = canvas.getContext('2d');
-    var width = canvas.width = koef * innerWidth;
-    var height = canvas.height = koef * innerHeight;
-    var rand = Math.random;
-    
-    ctx.fillStyle = mobile ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,1)";
-    ctx.fillRect(0, 0, width, height);
-
-    var heartPosition = function (rad) {
-        return [Math.pow(Math.sin(rad), 3), -(15 * Math.cos(rad) - 5 * Math.cos(2 * rad) - 2 * Math.cos(3 * rad) - Math.cos(4 * rad))];
-    };
-    
-    var scaleAndTranslate = function (pos, sx, sy, dx, dy) {
-        return [dx + pos[0] * sx, dy + pos[1] * sy];
-    };
-
-    window.addEventListener('resize', function () {
-        if (mobile) {
-            koef = 0.5;
-        } else {
-            koef = 1;
-        }
-        
-        width = canvas.width = koef * innerWidth;
-        height = canvas.height = koef * innerHeight;
-        
-        ctx.fillStyle = mobile ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,1)";
-        ctx.fillRect(0, 0, width, height);
-        
-        if (mobile) {
-            console.log("Mobil cihaz: Canvas boyutu güncellendi:", width, "x", height);
-        }
-    });
-
-    var traceCount = mobile ? 30 : 50;
-    var pointsOrigin = [];
-    var i;
-    var dr = mobile ? 0.2 : 0.1;
-    
-    for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 210, 13, 0, 0));
-    for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 150, 9, 0, 0));
-    for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 90, 5, 0, 0));
-    
-    var heartPointsCount = pointsOrigin.length;
-
-    var targetPoints = [];
-    var pulse = function (kx, ky) {
-        for (i = 0; i < pointsOrigin.length; i++) {
-            targetPoints[i] = [];
-            targetPoints[i][0] = kx * pointsOrigin[i][0] + width / 2;
-            targetPoints[i][1] = ky * pointsOrigin[i][1] + height / 2;
-        }
-    };
-
-    var e = [];
-    var particleCount = mobile ? 150 : 300;
-    
-    for (i = 0; i < particleCount; i++) {
-        var x = rand() * width;
-        var y = rand() * height;
-        e[i] = {
-            vx: 0,
-            vy: 0,
-            R: mobile ? 1.5 : 2,
-            speed: rand() + (mobile ? 3 : 5),
-            q: ~~(rand() * heartPointsCount),
-            D: 2 * (i % 2) - 1,
-            force: 0.2 * rand() + 0.7,
-            f: "hsla(0," + ~~(40 * rand() + 100) + "%," + ~~(60 * rand() + 20) + "%,.3)",
-            trace: []
-        };
-        for (var k = 0; k < traceCount; k++) e[i].trace[k] = {x: x, y: y};
+const themes = {
+  molten: {
+    name: 'Molten',
+    colors: [
+      new THREE.Color(0xff4800),
+      new THREE.Color(0xff8c00),
+      new THREE.Color(0xd73a00),
+      new THREE.Color(0x3d1005),
+      new THREE.Color(0xffc600)
+    ],
+    bloom: { 
+      strength: isMobile ? 0.25 : 0.35, // Mobilde daha düşük bloom
+      radius: isMobile ? 0.35 : 0.45,
+      threshold: isMobile ? 0.8 : 0.7
     }
-
-    var config = {
-        traceK: mobile ? 0.3 : 0.4,
-        timeDelta: mobile ? 0.008 : 0.01
-    };
-
-    var time = 0;
-    var loop = function () {
-        var n = -Math.cos(time);
-        pulse((1 + n) * .5, (1 + n) * .5);
-        time += ((Math.sin(time)) < 0 ? 9 : (n > 0.8) ? .2 : 1) * config.timeDelta;
-        
-        ctx.fillStyle = mobile ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,.1)";
-        ctx.fillRect(0, 0, width, height);
-        
-        for (i = e.length; i--;) {
-            var u = e[i];
-            var q = targetPoints[u.q];
-            var dx = u.trace[0].x - q[0];
-            var dy = u.trace[0].y - q[1];
-            var length = Math.sqrt(dx * dx + dy * dy);
-            
-            if (10 > length) {
-                if (0.95 < rand()) {
-                    u.q = ~~(rand() * heartPointsCount);
-                }
-                else {
-                    if (0.99 < rand()) {
-                        u.D *= -1;
-                    }
-                    u.q += u.D;
-                    u.q %= heartPointsCount;
-                    if (0 > u.q) {
-                        u.q += heartPointsCount;
-                    }
-                }
-            }
-            u.vx += -dx / length * u.speed;
-            u.vy += -dy / length * u.speed;
-            u.trace[0].x += u.vx;
-            u.trace[0].y += u.vy;
-            u.vx *= u.force;
-            u.vy *= u.force;
-            
-            for (k = 0; k < u.trace.length - 1;) {
-                var T = u.trace[k];
-                var N = u.trace[++k];
-                N.x -= config.traceK * (N.x - T.x);
-                N.y -= config.traceK * (N.y - T.y);
-            }
-            
-            ctx.fillStyle = u.f;
-            for (k = 0; k < u.trace.length; k++) {
-                if (mobile) {
-                    ctx.fillRect(u.trace[k].x, u.trace[k].y, 0.8, 0.8);
-                } else {
-                    ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
-                }
-            }
-        }
-
-        window.requestAnimationFrame(loop, canvas);
-    };
-    loop();
+  },
+  cosmic: {
+    name: 'Cosmic',
+    colors: [
+      new THREE.Color(0x6a0dad),
+      new THREE.Color(0x9370db),
+      new THREE.Color(0x4b0082),
+      new THREE.Color(0x8a2be2),
+      new THREE.Color(0xdda0dd)
+    ],
+    bloom: { 
+      strength: isMobile ? 0.3 : 0.4,
+      radius: isMobile ? 0.4 : 0.5,
+      threshold: isMobile ? 0.75 : 0.65
+    }
+  },
+  emerald: {
+    name: 'Emerald',
+    colors: [
+      new THREE.Color(0x00ff7f),
+      new THREE.Color(0x3cb371),
+      new THREE.Color(0x2e8b57),
+      new THREE.Color(0x00fa9a),
+      new THREE.Color(0x98fb98)
+    ],
+    bloom: { 
+      strength: isMobile ? 0.2 : 0.3,
+      radius: isMobile ? 0.5 : 0.6,
+      threshold: isMobile ? 0.85 : 0.75
+    }
+  }
 };
 
-var s = document.readyState;
-if (s === 'complete' || s === 'loaded' || s === 'interactive') init();
-else document.addEventListener('DOMContentLoaded', init, false);
+document.addEventListener('DOMContentLoaded', init);
 
-document.addEventListener('touchstart', function(e) {
-    if (e.touches.length > 1) {
-        e.preventDefault();
-    }
-}, { passive: false });
+function createStarPath(particleIndex, totalParticles) {
+  const numStarPoints = 5;
+  const outerRadius = isMobile ? 25 : 35; // Mobilde daha küçük
+  const innerRadius = isMobile ? 10 : 15;
+  const scale = isMobile ? 0.8 : 1.0;
+  const zDepth = isMobile ? 2 : 4;
 
-function goBack() {
-    window.location.href = '../index.html';
+  const starVertices = [];
+  for (let i = 0; i < numStarPoints; i++) {
+    let angle = (i / numStarPoints) * Math.PI * 2 - Math.PI / 2;
+    starVertices.push(new THREE.Vector2(outerRadius * Math.cos(angle), outerRadius * Math.sin(angle)));
+    angle += Math.PI / numStarPoints;
+    starVertices.push(new THREE.Vector2(innerRadius * Math.cos(angle), innerRadius * Math.sin(angle)));
+  }
+
+  const numSegments = starVertices.length;
+  const t_path = (particleIndex / totalParticles) * numSegments;
+  const segmentIndex = Math.floor(t_path) % numSegments;
+  const segmentProgress = t_path - Math.floor(t_path);
+
+  const startVertex = starVertices[segmentIndex];
+  const endVertex = starVertices[(segmentIndex + 1) % numSegments];
+
+  const x = THREE.MathUtils.lerp(startVertex.x, endVertex.x, segmentProgress);
+  const y = THREE.MathUtils.lerp(startVertex.y, endVertex.y, segmentProgress);
+  const z = Math.sin((particleIndex / totalParticles) * Math.PI * 4) * (zDepth / 2);
+
+  const jitterStrength = isMobile ? 0.1 : 0.2; // Mobilde daha az titreme
+  return new THREE.Vector3(
+    x * scale + (Math.random() - 0.5) * jitterStrength,
+    y * scale + (Math.random() - 0.5) * jitterStrength,
+    z + (Math.random() - 0.5) * jitterStrength * 0.5
+  );
 }
 
-if (isMobile) {
-    document.addEventListener('visibilitychange', function() {
-        if (document.hidden) {
-            console.log("Sayfa arka planda, optimizasyon uygulanıyor...");
-        } else {
-            console.log("Sayfa ön planda, animasyon devam ediyor...");
-        }
-    });
+function createHeartPath(particleIndex, totalParticles) {
+  const t = (particleIndex / totalParticles) * Math.PI * 2;
+  const scale = isMobile ? 1.6 : 2.2; // Mobilde daha küçük
+
+  let x = 16 * Math.pow(Math.sin(t), 3);
+  let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+
+  const finalX = x * scale;
+  const finalY = y * scale;
+  const z = Math.sin(t * 4) * (isMobile ? 1 : 2); // Mobilde daha az derinlik
+
+  const jitterStrength = isMobile ? 0.1 : 0.2;
+  return new THREE.Vector3(
+    finalX + (Math.random() - 0.5) * jitterStrength,
+    finalY + (Math.random() - 0.5) * jitterStrength,
+    z + (Math.random() - 0.5) * jitterStrength * 0.5
+  );
+}
+
+function init() {
+  scene = new THREE.Scene();
+
+  // MOBİL İÇİN KAMERA OPTİMİZASYONU
+  camera = new THREE.PerspectiveCamera(
+    isMobile ? 70 : 60, // Mobilde daha geniş açı
+    window.innerWidth / window.innerHeight,
+    0.1,
+    isMobile ? 1000 : 1500 // Mobilde daha kısa görüş mesafesi
+  );
+  camera.position.z = isMobile ? 70 : 90;
+
+  // RENDERER OPTİMİZASYONU
+  renderer = new THREE.WebGLRenderer({ 
+    antialias: !isMobile, // Mobilde antialias kapalı
+    alpha: false,
+    powerPreference: "high-performance",
+    failIfMajorPerformanceCaveat: isMobile // Düşük performansta hata ver
+  });
+  
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 2)); // Mobilde düşük pixel ratio
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  
+  // PERFORMANS OPTİMİZASYONLARI
+  if (isMobile) {
+    renderer.setClearColor(0x000000, 1);
+    renderer.shadowMap.enabled = false;
+    renderer.autoClear = true;
+  }
+  
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  createUI();
+
+  // KONTROLLER OPTİMİZASYONU
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = !isMobile; // Mobilde damping kapalı
+  controls.dampingFactor = 0.04;
+  controls.rotateSpeed = isMobile ? 0.2 : 0.3;
+  controls.minDistance = isMobile ? 20 : 30;
+  controls.maxDistance = isMobile ? 200 : 300;
+  controls.enablePan = false;
+  controls.autoRotate = false;
+  controls.autoRotateSpeed = 0.15;
+
+  // POST PROCESSING OPTİMİZASYONU
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  
+  // DÜŞÜK PERFORMANSLI CİHAZLARDA BLOOM KAPALI
+  if (!isLowEndDevice) {
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      isMobile ? 1.2 : 1.5,
+      isMobile ? 0.3 : 0.4,
+      isMobile ? 0.9 : 0.85
+    );
+    composer.addPass(bloomPass);
+    scene.userData.bloomPass = bloomPass;
+  }
+  
+  composer.addPass(new OutputPass());
+
+  createParticleSystem();
+
+  window.addEventListener('resize', onWindowResize);
+
+  // MOBİL PERFORMANS İZLEME
+  if (isMobile) {
+    console.log('Mobil cihaz tespit edildi. Optimizasyonlar uygulanıyor...');
+    console.log('Partikül sayısı:', particleCount);
+    console.log('Düşük performans cihazı:', isLowEndDevice);
+    
+    // Düşük performans uyarısı
+    if (isLowEndDevice) {
+      console.warn('Düşük performanslı cihaz tespit edildi. Bloom efekti kapatıldı.');
+    }
+  }
+
+  setTheme(currentTheme);
+  animate();
+}
+
+function createUI() {
+  const controlsDiv = document.getElementById('controls');
+  controlsDiv.innerHTML = '';
+
+  const themeSelector = document.createElement('div');
+  themeSelector.id = 'theme-selector';
+  Object.keys(themes).forEach((themeKey) => {
+    const button = document.createElement('button');
+    button.className = 'theme-btn';
+    button.dataset.theme = themeKey;
+    button.textContent = themes[themeKey].name;
+    button.addEventListener('click', () => setTheme(themeKey));
+    themeSelector.appendChild(button);
+  });
+  controlsDiv.appendChild(themeSelector);
+
+  const separator1 = document.createElement('div');
+  separator1.className = 'separator';
+  controlsDiv.appendChild(separator1);
+
+  const actionSelector = document.createElement('div');
+  actionSelector.id = 'action-selector';
+
+  const morphBtn = document.createElement('button');
+  morphBtn.className = 'action-btn';
+  morphBtn.textContent = 'Morph';
+  morphBtn.addEventListener('click', () => {
+    morphBtn.classList.toggle('active');
+    morphTarget = morphTarget === 1 ? 0 : 1;
+  });
+  actionSelector.appendChild(morphBtn);
+  controlsDiv.appendChild(actionSelector);
+
+  const separator2 = document.createElement('div');
+  separator2.className = 'separator';
+  controlsDiv.appendChild(separator2);
+
+  const toggleOption = document.createElement('div');
+  toggleOption.className = 'toggle-option';
+
+  const toggleLabel = document.createElement('label');
+  toggleLabel.className = 'toggle-switch';
+
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.id = 'animateToggle';
+  toggleInput.checked = true;
+  toggleInput.addEventListener('change', (e) => {
+    isAnimationEnabled = e.target.checked;
+  });
+
+  const toggleSlider = document.createElement('span');
+  toggleSlider.className = 'toggle-slider';
+
+  toggleLabel.appendChild(toggleInput);
+  toggleLabel.appendChild(toggleSlider);
+
+  const labelForToggle = document.createElement('label');
+  labelForToggle.htmlFor = 'animateToggle';
+  labelForToggle.textContent = 'Animate';
+
+  toggleOption.appendChild(toggleLabel);
+  toggleOption.appendChild(labelForToggle);
+  controlsDiv.appendChild(toggleOption);
+
+  // MOBİL İÇİN PERFORMANS BİLGİSİ
+  if (isMobile) {
+    const infoDiv = document.createElement('div');
+    infoDiv.style.cssText = `
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      padding: 5px;
+      text-align: center;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      margin-top: 5px;
+    `;
+    infoDiv.textContent = `Partikül: ${particleCount} ${isLowEndDevice ? '| Düşük Performans' : ''}`;
+    controlsDiv.appendChild(infoDiv);
+  }
+}
+
+function createParticleSystem() {
+  const geometry = new THREE.BufferGeometry();
+
+  const positions = new Float32Array(particleCount * 3);
+  const colors = new Float32Array(particleCount * 3);
+  const sizes = new Float32Array(particleCount);
+
+  const starPositions = new Float32Array(particleCount * 3);
+  const heartPositions = new Float32Array(particleCount * 3);
+  const disintegrationOffsets = new Float32Array(particleCount * 3);
+
+  for (let i = 0; i < particleCount; i++) {
+    const i3 = i * 3;
+
+    const starPos = createStarPath(i, particleCount);
+    const heartPos = createHeartPath(i, particleCount);
+
+    positions[i3] = heartPos.x;
+    positions[i3 + 1] = heartPos.y;
+    positions[i3 + 2] = heartPos.z;
+
+    starPositions[i3] = starPos.x;
+    starPositions[i3 + 1] = starPos.y;
+    starPositions[i3 + 2] = starPos.z;
+
+    heartPositions[i3] = heartPos.x;
+    heartPositions[i3 + 1] = heartPos.y;
+    heartPositions[i3 + 2] = heartPos.z;
+
+    const { color, size } = getAttributesForParticle(i);
+    colors[i3] = color.r;
+    colors[i3 + 1] = color.g;
+    colors[i3 + 2] = color.b;
+    sizes[i] = size;
+
+    const offsetStrength = isMobile ? 20 + Math.random() * 30 : 30 + Math.random() * 40;
+    const phi = Math.random() * Math.PI * 2;
+    const theta = Math.acos(2 * Math.random() - 1);
+
+    disintegrationOffsets[i3] = Math.sin(theta) * Math.cos(phi) * offsetStrength;
+    disintegrationOffsets[i3 + 1] = Math.sin(theta) * Math.sin(phi) * offsetStrength;
+    disintegrationOffsets[i3 + 2] = Math.cos(theta) * offsetStrength * 0.5;
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute('starPosition', new THREE.BufferAttribute(starPositions, 3));
+  geometry.setAttribute('heartPosition', new THREE.BufferAttribute(heartPositions, 3));
+  geometry.setAttribute('disintegrationOffset', new THREE.BufferAttribute(disintegrationOffsets, 3));
+
+  const texture = createParticleTexture();
+  const material = new THREE.PointsMaterial({
+    size: isMobile ? 2.0 : 2.8, // Mobilde daha küçük partiküller
+    map: texture,
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+    alphaTest: 0.01
+  });
+
+  particles = new THREE.Points(geometry, material);
+  scene.add(particles);
+}
+
+function getAttributesForParticle(i) {
+  const t = i / particleCount;
+  const colorPalette = themes[currentTheme].colors;
+
+  const colorProgress = (t * colorPalette.length * 1.5 + time * 0.05) % colorPalette.length;
+  const colorIndex1 = Math.floor(colorProgress);
+  const colorIndex2 = (colorIndex1 + 1) % colorPalette.length;
+  const blendFactor = colorProgress - colorIndex1;
+
+  const color1 = colorPalette[colorIndex1];
+  const color2 = colorPalette[colorIndex2];
+  const baseColor = new THREE.Color().lerpColors(color1, color2, blendFactor);
+
+  const color = baseColor.clone().multiplyScalar(0.65 + Math.random() * 0.55);
+  const size = (isMobile ? 0.5 : 0.65) + Math.random() * 0.6;
+
+  return { color, size };
+}
+
+function createParticleTexture() {
+  const canvas = document.createElement('canvas');
+  const size = isMobile ? 32 : 64; // Mobilde daha küçük texture
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+
+  const centerX = size / 2;
+  const centerY = size / 2;
+  const outerRadius = size * 0.45;
+  const innerRadius = size * 0.2;
+  const numPoints = 5;
+
+  context.beginPath();
+  context.moveTo(centerX, centerY - outerRadius);
+  for (let i = 0; i < numPoints; i++) {
+    const outerAngle = (i / numPoints) * Math.PI * 2 - Math.PI / 2;
+    context.lineTo(centerX + outerRadius * Math.cos(outerAngle), centerY + outerRadius * Math.sin(outerAngle));
+    const innerAngle = outerAngle + Math.PI / numPoints;
+    context.lineTo(centerX + innerRadius * Math.cos(innerAngle), centerY + innerRadius * Math.sin(innerAngle));
+  }
+  context.closePath();
+
+  const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, outerRadius);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  gradient.addColorStop(0.3, 'rgba(255, 255, 220, 0.9)');
+  gradient.addColorStop(0.6, 'rgba(255, 200, 150, 0.6)');
+  gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+
+  context.fillStyle = gradient;
+  context.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function animateParticles() {
+  if (!particles || !isAnimationEnabled) return;
+
+  const positions = particles.geometry.attributes.position.array;
+  const starPositions = particles.geometry.attributes.starPosition.array;
+  const heartPositions = particles.geometry.attributes.heartPosition.array;
+  const particleColors = particles.geometry.attributes.color.array;
+  const particleSizes = particles.geometry.attributes.size.array;
+  const disintegrationOffsets = particles.geometry.attributes.disintegrationOffset.array;
+
+  // MOBİLDE DAHA YAVAŞ MORPH
+  const morphSpeed = isMobile ? 0.02 : 0.04;
+  morphProgress += (morphTarget - morphProgress) * morphSpeed;
+
+  // MOBİLDE DAHA AZ PARTİKÜL İŞLEME
+  const updateStep = isMobile ? 2 : 1; // Her 2 partikülden birini güncelle
+
+  for (let i = 0; i < particleCount; i += updateStep) {
+    const i3 = i * 3;
+    const iSize = i;
+
+    const homeX = THREE.MathUtils.lerp(starPositions[i3], heartPositions[i3], morphProgress);
+    const homeY = THREE.MathUtils.lerp(starPositions[i3 + 1], heartPositions[i3 + 1], morphProgress);
+    const homeZ = THREE.MathUtils.lerp(starPositions[i3 + 2], heartPositions[i3 + 2], morphProgress);
+
+    // MOBİLDE DAHA YAVAŞ ANİMASYON
+    const disintegrationCycleTime = isMobile ? 30.0 : 20.0;
+    const particleCycleOffset = (i / particleCount) * disintegrationCycleTime * 0.5;
+    const cycleProgress = ((time * (isMobile ? 0.4 : 0.6) + particleCycleOffset) % disintegrationCycleTime) / disintegrationCycleTime;
+
+    let disintegrationAmount = 0;
+    const stablePhaseEnd = 0.5;
+    const disintegrateStartPhase = stablePhaseEnd;
+    const disintegrateFullPhase = stablePhaseEnd + 0.15;
+    const holdPhaseEnd = disintegrateFullPhase + 0.1;
+
+    if (cycleProgress < stablePhaseEnd) {
+      disintegrationAmount = 0;
+    } else if (cycleProgress < disintegrateFullPhase) {
+      disintegrationAmount = (cycleProgress - disintegrateStartPhase) / (disintegrateFullPhase - disintegrateStartPhase);
+    } else if (cycleProgress < holdPhaseEnd) {
+      disintegrationAmount = 1.0;
+    } else {
+      disintegrationAmount = 1.0 - (cycleProgress - holdPhaseEnd) / (1.0 - holdPhaseEnd);
+    }
+
+    disintegrationAmount = Math.sin(disintegrationAmount * Math.PI * 0.5);
+
+    let currentTargetX = homeX;
+    let currentTargetY = homeY;
+    let currentTargetZ = homeZ;
+    let currentLerpFactor = isMobile ? 0.065 : 0.085;
+
+    if (disintegrationAmount > 0.001) {
+      currentTargetX = homeX + disintegrationOffsets[i3] * disintegrationAmount;
+      currentTargetY = homeY + disintegrationOffsets[i3 + 1] * disintegrationAmount;
+      currentTargetZ = homeZ + disintegrationOffsets[i3 + 2] * disintegrationAmount;
+      currentLerpFactor = (isMobile ? 0.035 : 0.045) + disintegrationAmount * 0.02;
+    }
+
+    positions[i3] += (currentTargetX - positions[i3]) * currentLerpFactor;
+    positions[i3 + 1] += (currentTargetY - positions[i3 + 1]) * currentLerpFactor;
+    positions[i3 + 2] += (currentTargetZ - positions[i3 + 2]) * currentLerpFactor;
+
+    const { color: baseParticleColor, size: baseParticleSize } = getAttributesForParticle(i);
+
+    let brightnessFactor =
+      (0.65 + Math.sin((i / particleCount) * Math.PI * 7 + time * (isMobile ? 0.8 : 1.3)) * 0.35) * (1 - disintegrationAmount * 0.75);
+    brightnessFactor *= 0.85 + Math.sin(time * (isMobile ? 4 : 7) + i * 0.5) * 0.15;
+
+    particleColors[i3] = baseParticleColor.r * brightnessFactor;
+    particleColors[i3 + 1] = baseParticleColor.g * brightnessFactor;
+    particleColors[i3 + 2] = baseParticleColor.b * brightnessFactor;
+
+    let currentSize = baseParticleSize * (1 - disintegrationAmount * 0.9);
+    currentSize *= 0.8 + Math.sin(time * (isMobile ? 3 : 5) + i * 0.3) * 0.2;
+    particleSizes[iSize] = Math.max(0.05, currentSize);
+  }
+
+  particles.geometry.attributes.position.needsUpdate = true;
+  particles.geometry.attributes.color.needsUpdate = true;
+  particles.geometry.attributes.size.needsUpdate = true;
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function setTheme(themeName) {
+  if (!themes[themeName]) return;
+  currentTheme = themeName;
+
+  document.body.className = `theme-${currentTheme}`;
+  document.querySelectorAll('.theme-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.theme === themeName);
+  });
+
+  const theme = themes[currentTheme];
+  const bloomPass = scene.userData.bloomPass;
+  if (bloomPass) {
+    bloomPass.strength = theme.bloom.strength;
+    bloomPass.radius = theme.bloom.radius;
+    bloomPass.threshold = theme.bloom.threshold;
+  }
+
+  updateParticleColorsAndSizes();
+}
+
+function updateParticleColorsAndSizes() {
+  if (!particles) return;
+
+  const pColors = particles.geometry.attributes.color.array;
+  const pSizes = particles.geometry.attributes.size.array;
+
+  for (let i = 0; i < particleCount; i++) {
+    const { color, size } = getAttributesForParticle(i);
+    pColors[i * 3] = color.r;
+    pColors[i * 3 + 1] = color.g;
+    pColors[i * 3 + 2] = color.b;
+    pSizes[i] = size;
+  }
+
+  particles.geometry.attributes.color.needsUpdate = true;
+  particles.geometry.attributes.size.needsUpdate = true;
+}
+
+// FPS OPTİMİZASYONU
+let lastTime = 0;
+const targetFPS = isMobile ? 30 : 60; // Mobilde 30 FPS
+const interval = 1000 / targetFPS;
+
+function animate(currentTime = 0) {
+  requestAnimationFrame(animate);
+  
+  // FPS LİMİTER
+  const deltaTime = currentTime - lastTime;
+  if (deltaTime < interval) return;
+  
+  lastTime = currentTime - (deltaTime % interval);
+  
+  time += 0.02;
+  controls.update();
+
+  if (isAnimationEnabled) {
+    animateParticles();
+  }
+
+  composer.render();
 }
