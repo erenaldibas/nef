@@ -1,0 +1,115 @@
+/* Geri dön butonu */
+.back-button {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    padding: 12px 24px;
+    background: rgba(255, 0, 0, 0.2);
+    border: 2px solid rgba(255, 100, 100, 0.4);
+    color: white;
+    border-radius: 50px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    backdrop-filter: blur(10px);
+}
+
+.back-button:hover {
+    background: rgba(255, 100, 100, 0.3);
+    transform: translateX(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+canvas{
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+}
+
+/* MOBİL UYUMLULUK - DANS EDEN KALPLER */
+@media (max-width: 768px) {
+    body {
+        overflow: auto;
+    }
+    
+    canvas {
+        width: 100%;
+        height: 100vh;
+    }
+    
+    .back-button {
+        top: 15px;
+        left: 15px;
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        z-index: 1001;
+        background: rgba(255, 0, 0, 0.25);
+        border-color: rgba(255, 100, 100, 0.5);
+    }
+    
+    .back-button:hover {
+        background: rgba(255, 100, 100, 0.35);
+    }
+}
+
+@media (max-width: 480px) {
+    .back-button {
+        top: 10px;
+        left: 10px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+    }
+    
+    .back-button i {
+        font-size: 0.85rem;
+    }
+    
+    canvas {
+        image-rendering: optimizeSpeed;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: optimize-contrast;
+        -ms-interpolation-mode: nearest-neighbor;
+    }
+}
+
+@media (max-width: 360px) {
+    .back-button {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+    .back-button {
+        top: 5px;
+        left: 5px;
+        padding: 5px 10px;
+        font-size: 0.8rem;
+    }
+    
+    canvas {
+        height: 100vh;
+    }
+}
+
+@media (orientation: portrait) and (max-height: 700px) {
+    .back-button {
+        top: 8px;
+        left: 8px;
+        padding: 7px 12px;
+    }
+}
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    canvas {
+        image-rendering: crisp-edges;
+    }
+}
