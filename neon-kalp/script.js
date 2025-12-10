@@ -9,10 +9,12 @@ let scene, camera, renderer, particles, composer, controls;
 let time = 0;
 let isAnimationEnabled = true;
 let currentTheme = 'molten';
-let morphTarget = 1; // DEĞİŞTİRİLDİ: Başlangıçta kalp (1)
-let morphProgress = 1; // DEĞİŞTİRİLDİ: Başlangıçta kalp (1)
+let morphTarget = 1;
+let morphProgress = 1;
 
 const particleCount = 10000;
+// Mobil kontrolü
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const themes = {
   molten: {
@@ -54,10 +56,10 @@ document.addEventListener('DOMContentLoaded', init);
 
 function createStarPath(particleIndex, totalParticles) {
   const numStarPoints = 5;
-  const outerRadius = 35;
-  const innerRadius = 15;
+  const outerRadius = isMobile ? 25 : 35; // Mobilde daha küçük
+  const innerRadius = isMobile ? 10 : 15; // Mobilde daha küçük
   const scale = 1.0;
-  const zDepth = 4;
+  const zDepth = isMobile ? 3 : 4; // Mobilde daha az derinlik
 
   const starVertices = [];
   for (let i = 0; i < numStarPoints; i++) {
@@ -89,7 +91,7 @@ function createStarPath(particleIndex, totalParticles) {
 
 function createHeartPath(particleIndex, totalParticles) {
   const t = (particleIndex / totalParticles) * Math.PI * 2;
-  const scale = 2.2;
+  const scale = isMobile ? 1.8 : 2.2; // Mobilde daha küçük kalp
 
   let x = 16 * Math.pow(Math.sin(t), 3);
   let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 *
@@ -111,11 +113,22 @@ function init() {
   scene = new THREE.Scene();
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1500);
-  camera.position.z = 90;
+  
+  // Mobilde kamera daha uzakta olsun
+  if (isMobile) {
+    camera.position.z = 120;
+    console.log("Mobil cihaz tespit edildi, kamera uzaklığı: 120");
+  } else {
+    camera.position.z = 90;
+  }
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ 
+    antialias: true,
+    alpha: true,
+    powerPreference: "high-performance"
+  });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
   document.getElementById('container').appendChild(renderer.domElement);
 
   createUI();
@@ -123,9 +136,20 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.04;
-  controls.rotateSpeed = 0.3;
-  controls.minDistance = 30;
-  controls.maxDistance = 300;
+
+  if (isMobile) {
+    controls.rotateSpeed = 0.15;
+    controls.minDistance = 50;
+    controls.maxDistance = 400;
+    controls.enableZoom = false;
+    console.log("Mobil kontroller aktif: daha yavaş dönüş, zoom kapalı");
+  } else {
+    controls.rotateSpeed = 0.3;
+    controls.minDistance = 30;
+    controls.maxDistance = 300;
+    controls.enableZoom = true;
+  }
+
   controls.enablePan = false;
   controls.autoRotate = false;
   controls.autoRotateSpeed = 0.15;
@@ -173,7 +197,7 @@ function createUI() {
   morphBtn.textContent = 'Morph';
   morphBtn.addEventListener('click', () => {
     morphBtn.classList.toggle('active');
-    morphTarget = morphTarget === 1 ? 0 : 1; // DEĞİŞTİRİLDİ: 0 ? 1 : 0 yerine 1 ? 0 : 1
+    morphTarget = morphTarget === 1 ? 0 : 1;
   });
   actionSelector.appendChild(morphBtn);
   controlsDiv.appendChild(actionSelector);
@@ -209,6 +233,20 @@ function createUI() {
   toggleOption.appendChild(toggleLabel);
   toggleOption.appendChild(labelForToggle);
   controlsDiv.appendChild(toggleOption);
+
+  // Mobilde kontrolleri daha küçük yap
+  if (isMobile) {
+    controlsDiv.style.padding = '8px 12px';
+    controlsDiv.style.gap = '8px';
+    controlsDiv.style.bottom = '10px';
+    
+    document.querySelectorAll('.theme-btn, .action-btn').forEach(btn => {
+      btn.style.padding = '5px 8px';
+      btn.style.fontSize = '11px';
+    });
+    
+    toggleOption.style.fontSize = '11px';
+  }
 }
 
 function createParticleSystem() {
@@ -228,7 +266,6 @@ function createParticleSystem() {
     const starPos = createStarPath(i, particleCount);
     const heartPos = createHeartPath(i, particleCount);
 
-    // BAŞLANGIÇTA KALP OLSUN
     positions[i3] = heartPos.x;
     positions[i3 + 1] = heartPos.y;
     positions[i3 + 2] = heartPos.z;
@@ -247,7 +284,7 @@ function createParticleSystem() {
     colors[i3 + 2] = color.b;
     sizes[i] = size;
 
-    const offsetStrength = 30 + Math.random() * 40;
+    const offsetStrength = isMobile ? 20 + Math.random() * 30 : 30 + Math.random() * 40;
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.acos(2 * Math.random() - 1);
 
@@ -265,7 +302,7 @@ function createParticleSystem() {
 
   const texture = createParticleTexture();
   const material = new THREE.PointsMaterial({
-    size: 2.8,
+    size: isMobile ? 1.8 : 2.8,
     map: texture,
     vertexColors: true,
     transparent: true,
@@ -300,7 +337,7 @@ function getAttributesForParticle(i) {
 
 function createParticleTexture() {
   const canvas = document.createElement('canvas');
-  const size = 64;
+  const size = isMobile ? 48 : 64; // Mobilde daha küçük texture
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext('2d');
@@ -416,8 +453,24 @@ function animateParticles() {
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
+  
+  // Mobilde ekranı daha iyi sığdır
+  if (isMobile) {
+    // Dikey modda (portrait) biraz küçült
+    if (window.innerHeight > window.innerWidth) {
+      const height = window.innerHeight * 0.85;
+      renderer.setSize(window.innerWidth, height);
+      composer.setSize(window.innerWidth, height);
+      console.log("Mobil dikey mod: renderer boyutu ayarlandı");
+    } else {
+      // Yatay modda normal
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    }
+  } else {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+  }
 }
 
 function setTheme(themeName) {
@@ -432,8 +485,14 @@ function setTheme(themeName) {
   const theme = themes[currentTheme];
   const bloomPass = scene.userData.bloomPass;
   if (bloomPass) {
-    bloomPass.strength = theme.bloom.strength;
-    bloomPass.radius = theme.bloom.radius;
+    // Mobilde bloom efektini biraz azalt
+    if (isMobile) {
+      bloomPass.strength = theme.bloom.strength * 0.8;
+      bloomPass.radius = theme.bloom.radius * 0.9;
+    } else {
+      bloomPass.strength = theme.bloom.strength;
+      bloomPass.radius = theme.bloom.radius;
+    }
     bloomPass.threshold = theme.bloom.threshold;
   }
 
