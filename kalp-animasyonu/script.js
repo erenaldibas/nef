@@ -1,16 +1,69 @@
-// Mobil kontrolü
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+// MOBİL UYUMLULUK DÜZELTMESİ - BAŞLANGIÇ
+(function() {
+    // Mobil cihaz kontrolü
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // Viewport ayarı
+    const meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+    document.head.appendChild(meta);
+    
+    // Canvas'ı responsive yap
+    function setupResponsiveCanvas() {
+        const canvas = document.getElementById('heart');
+        if (!canvas) return;
+        
+        // Canvas context'ini al
+        const ctx = canvas.getContext('2d');
+        
+        // Boyutları ayarla
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            
+            // Gerçek piksel boyutu
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            
+            // CSS boyutu
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            
+            // Scale context'i
+            ctx.scale(dpr, dpr);
+            
+            // Mobilde performans için
+            if (isMobile) {
+                canvas.style.imageRendering = 'optimizeQuality';
+                canvas.style.webkitTransform = 'translateZ(0)';
+                canvas.style.transform = 'translateZ(0)';
+            }
+        }
+        
+        // İlk boyutlandırma
+        resizeCanvas();
+        
+        // Yeniden boyutlandırma
+        let resizeTimeout;
+        function handleResize() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(resizeCanvas, 100);
+        }
+        
+        window.addEventListener('resize', handleResize);
+        window.addEventListener('orientationchange', handleResize);
+        
+        return { canvas, ctx };
+    }
+    
+    // DOM yüklendiğinde çalıştır
+    document.addEventListener('DOMContentLoaded', function() {
+        setupResponsiveCanvas();
+    });
+})();
 
-// Mobil için optimize edilmiş ayarlar
-if (isMobile) {
-    window.isDevice = true;
-    var koef = 0.5;
-    console.log("Mobil cihaz tespit edildi, optimizasyon uygulanıyor...");
-} else {
-    window.isDevice = false;
-    var koef = 1;
-}
-
+// ORJİNAL KOD - MOBİL UYUMLU HALE GETİRİLDİ
 window.requestAnimationFrame =
     window.__requestAnimationFrame ||
         window.requestAnimationFrame ||
@@ -31,20 +84,31 @@ window.requestAnimationFrame =
             };
         })();
 
+// Mobil kontrolü
+window.isDevice = (/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(((navigator.userAgent || navigator.vendor || window.opera)).toLowerCase()));
+
+// Mobil için ayarlar
 var loaded = false;
 var init = function () {
     if (loaded) return;
     loaded = true;
     
     var mobile = window.isDevice;
-    var koef = mobile ? 0.5 : 1;
+    var koef = mobile ? 0.7 : 1; // Mobilde biraz küçült
+    
     var canvas = document.getElementById('heart');
     var ctx = canvas.getContext('2d');
-    var width = canvas.width = koef * innerWidth;
-    var height = canvas.height = koef * innerHeight;
-    var rand = Math.random;
     
-    ctx.fillStyle = mobile ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,1)";
+    // Canvas boyutlarını güncelle
+    function updateCanvasSize() {
+        var width = canvas.width = koef * window.innerWidth;
+        var height = canvas.height = koef * window.innerHeight;
+        return { width, height };
+    }
+    
+    var { width, height } = updateCanvasSize();
+    
+    ctx.fillStyle = "rgba(0,0,0,1)";
     ctx.fillRect(0, 0, width, height);
 
     var heartPosition = function (rad) {
@@ -55,33 +119,28 @@ var init = function () {
         return [dx + pos[0] * sx, dy + pos[1] * sy];
     };
 
-    window.addEventListener('resize', function () {
-        if (mobile) {
-            koef = 0.5;
-        } else {
-            koef = 1;
-        }
+    // Yeniden boyutlandırma
+    var resizeHandler = function () {
+        var sizes = updateCanvasSize();
+        width = sizes.width;
+        height = sizes.height;
         
-        width = canvas.width = koef * innerWidth;
-        height = canvas.height = koef * innerHeight;
-        
-        ctx.fillStyle = mobile ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,1)";
+        ctx.fillStyle = "rgba(0,0,0,1)";
         ctx.fillRect(0, 0, width, height);
-        
-        if (mobile) {
-            console.log("Mobil cihaz: Canvas boyutu güncellendi:", width, "x", height);
-        }
+    };
+
+    window.addEventListener('resize', resizeHandler);
+    window.addEventListener('orientationchange', function() {
+        setTimeout(resizeHandler, 100);
     });
 
-    var traceCount = mobile ? 30 : 50;
+    var traceCount = mobile ? 15 : 50; // Mobilde daha az iz
     var pointsOrigin = [];
     var i;
-    var dr = mobile ? 0.2 : 0.1;
-    
+    var dr = mobile ? 0.4 : 0.1; // Mobilde daha az detay
     for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 210, 13, 0, 0));
     for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 150, 9, 0, 0));
     for (i = 0; i < Math.PI * 2; i += dr) pointsOrigin.push(scaleAndTranslate(heartPosition(i), 90, 5, 0, 0));
-    
     var heartPointsCount = pointsOrigin.length;
 
     var targetPoints = [];
@@ -94,28 +153,26 @@ var init = function () {
     };
 
     var e = [];
-    var particleCount = mobile ? 150 : 300;
-    
-    for (i = 0; i < particleCount; i++) {
-        var x = rand() * width;
-        var y = rand() * height;
+    for (i = 0; i < heartPointsCount; i++) {
+        var x = Math.random() * width;
+        var y = Math.random() * height;
         e[i] = {
             vx: 0,
             vy: 0,
-            R: mobile ? 1.5 : 2,
-            speed: rand() + (mobile ? 3 : 5),
-            q: ~~(rand() * heartPointsCount),
+            R: mobile ? 1.5 : 2, // Mobilde daha küçük
+            speed: Math.random() + (mobile ? 3 : 5), // Mobilde daha yavaş
+            q: ~~(Math.random() * heartPointsCount),
             D: 2 * (i % 2) - 1,
-            force: 0.2 * rand() + 0.7,
-            f: "hsla(0," + ~~(40 * rand() + 100) + "%," + ~~(60 * rand() + 20) + "%,.3)",
+            force: 0.2 * Math.random() + 0.7,
+            f: "hsla(0," + ~~(40 * Math.random() + 100) + "%," + ~~(60 * Math.random() + 20) + "%,.3)",
             trace: []
         };
         for (var k = 0; k < traceCount; k++) e[i].trace[k] = {x: x, y: y};
     }
 
     var config = {
-        traceK: mobile ? 0.3 : 0.4,
-        timeDelta: mobile ? 0.008 : 0.01
+        traceK: 0.4,
+        timeDelta: mobile ? 0.02 : 0.01 // Mobilde daha yavaş zaman
     };
 
     var time = 0;
@@ -123,23 +180,20 @@ var init = function () {
         var n = -Math.cos(time);
         pulse((1 + n) * .5, (1 + n) * .5);
         time += ((Math.sin(time)) < 0 ? 9 : (n > 0.8) ? .2 : 1) * config.timeDelta;
-        
-        ctx.fillStyle = mobile ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,.1)";
+        ctx.fillStyle = "rgba(0,0,0,.1)";
         ctx.fillRect(0, 0, width, height);
-        
         for (i = e.length; i--;) {
             var u = e[i];
             var q = targetPoints[u.q];
             var dx = u.trace[0].x - q[0];
             var dy = u.trace[0].y - q[1];
             var length = Math.sqrt(dx * dx + dy * dy);
-            
             if (10 > length) {
-                if (0.95 < rand()) {
-                    u.q = ~~(rand() * heartPointsCount);
+                if (0.95 < Math.random()) {
+                    u.q = ~~(Math.random() * heartPointsCount);
                 }
                 else {
-                    if (0.99 < rand()) {
+                    if (0.99 < Math.random()) {
                         u.D *= -1;
                     }
                     u.q += u.D;
@@ -155,25 +209,19 @@ var init = function () {
             u.trace[0].y += u.vy;
             u.vx *= u.force;
             u.vy *= u.force;
-            
             for (k = 0; k < u.trace.length - 1;) {
                 var T = u.trace[k];
                 var N = u.trace[++k];
                 N.x -= config.traceK * (N.x - T.x);
                 N.y -= config.traceK * (N.y - T.y);
             }
-            
             ctx.fillStyle = u.f;
             for (k = 0; k < u.trace.length; k++) {
-                if (mobile) {
-                    ctx.fillRect(u.trace[k].x, u.trace[k].y, 0.8, 0.8);
-                } else {
-                    ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
-                }
+                ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
             }
         }
 
-        window.requestAnimationFrame(loop, canvas);
+        window.animationFrameId = window.requestAnimationFrame(loop, canvas);
     };
     loop();
 };
@@ -181,23 +229,3 @@ var init = function () {
 var s = document.readyState;
 if (s === 'complete' || s === 'loaded' || s === 'interactive') init();
 else document.addEventListener('DOMContentLoaded', init, false);
-
-document.addEventListener('touchstart', function(e) {
-    if (e.touches.length > 1) {
-        e.preventDefault();
-    }
-}, { passive: false });
-
-function goBack() {
-    window.location.href = '../index.html';
-}
-
-if (isMobile) {
-    document.addEventListener('visibilitychange', function() {
-        if (document.hidden) {
-            console.log("Sayfa arka planda, optimizasyon uygulanıyor...");
-        } else {
-            console.log("Sayfa ön planda, animasyon devam ediyor...");
-        }
-    });
-}
